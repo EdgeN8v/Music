@@ -6,6 +6,12 @@
 
 > 个人小项目，没有上架计划，也不保证长期维护。issue/PR 欢迎，但别指望秒回。
 
+<p align="center">
+  <img src="docs/screenshots/home.jpg" width="30%" alt="Home 心情选歌" />
+  <img src="docs/screenshots/library.jpg" width="30%" alt="Library 歌曲列表" />
+  <img src="docs/screenshots/settings.jpg" width="30%" alt="Settings 设置页" />
+</p>
+
 ---
 
 ## 目录
