@@ -51,6 +51,7 @@ class SettingsRepository(private val context: Context) {
         val LOCAL_FAVORITE_IDS = stringSetPreferencesKey("local_favorite_ids")
         val MOOD_LABELS = stringPreferencesKey("mood_labels")
         val PLAYBACK_STATE = stringPreferencesKey("playback_state")
+        val FAVORITES_FIRST = booleanPreferencesKey("favorites_first")
     }
 
     val config: Flow<ServerConfig> = context.dataStore.data.map { prefs ->
@@ -92,6 +93,18 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun saveMusicMode(mode: MusicMode) {
         context.dataStore.edit { prefs -> prefs[Keys.MUSIC_MODE] = mode.name }
+    }
+
+    /**
+     * Whether 激情/平静 put favorited songs first (see HomeScreen.playMood).
+     * Defaults on (matches the behavior before this was made a toggle) —
+     * turned off when you want a fresh mix instead of the same favorited
+     * handful every time.
+     */
+    val favoritesFirst: Flow<Boolean> = context.dataStore.data.map { prefs -> prefs[Keys.FAVORITES_FIRST] ?: true }
+
+    suspend fun setFavoritesFirst(enabled: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.FAVORITES_FIRST] = enabled }
     }
 
     /** The SAF tree URI the user granted access to for the USB drive, as a string (null if never granted). */

@@ -1,12 +1,13 @@
 package com.example.music.ui.components
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,9 +39,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -95,7 +98,7 @@ private fun QueueContent() {
     var draggingIndex by remember { mutableStateOf<Int?>(null) }
     var dragOffsetPx by remember { mutableStateOf(0f) }
 
-    Column(modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).padding(bottom = 16.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.88f).padding(bottom = 16.dp)) {
         if (currentSong != null) {
             Row(
                 modifier = Modifier.fillMaxWidth().height(ROW_HEIGHT).padding(horizontal = 20.dp),
@@ -132,6 +135,7 @@ private fun QueueContent() {
                         offsetYPx = if (isDragging) dragOffsetPx else 0f,
                         elevated = isDragging,
                         onClick = { PlayerController.jumpToQueueIndex(index) },
+                        onPinToTop = { PlayerController.moveQueueItem(index, currentIndex + 1) },
                         onRemove = { PlayerController.removeFromQueue(index) },
                         onFavoriteToggle = { scope.launch { SongRepository.toggleFavorite(context, config, liveSong) } },
                         onDragStart = {
@@ -162,12 +166,14 @@ private fun QueueContent() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun QueueRow(
     song: Song,
     offsetYPx: Float,
     elevated: Boolean,
     onClick: () -> Unit,
+    onPinToTop: () -> Unit,
     onRemove: () -> Unit,
     onFavoriteToggle: () -> Unit,
     onDragStart: () -> Unit,
@@ -177,6 +183,7 @@ private fun QueueRow(
     val latestOnDragStart by rememberUpdatedState(onDragStart)
     val latestOnDrag by rememberUpdatedState(onDrag)
     val latestOnDragEnd by rememberUpdatedState(onDragEnd)
+    val haptics = LocalHapticFeedback.current
 
     Row(
         modifier = Modifier
@@ -186,10 +193,19 @@ private fun QueueRow(
             .then(if (elevated) Modifier.shadow(4.dp) else Modifier),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Long-press = 置顶 (jump it to the front of the upcoming queue) —
+        // dragging something all the way up from deep in a long queue is
+        // slow and fiddly, this is the shortcut for "I want this one next".
         Row(
             modifier = Modifier
                 .weight(1f)
-                .clickable(onClick = onClick)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onPinToTop()
+                    }
+                )
                 .padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

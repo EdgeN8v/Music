@@ -7,11 +7,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -28,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -73,6 +77,7 @@ fun HomeScreen() {
 
     var showSearch by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
+    val favoritesFirst by settingsRepository.favoritesFirst.collectAsState(initial = true)
     val librarySongs by SongRepository.library.collectAsState()
     val activeMood by PlayerController.activeMood.collectAsState()
     val isUsbActive by MusicSource.isUsbActive.collectAsState()
@@ -125,9 +130,11 @@ fun HomeScreen() {
                 // order — [all] is alphabetically sorted, so a non-shuffled
                 // pass keeps that order within each half) so hearting a song
                 // actually surfaces it sooner instead of landing anywhere by
-                // chance. 收藏/随机 don't need this split — one's already
-                // all-favorites, the other's meant to be a flat shuffle.
-                val ordered = if (mood == "Energetic" || mood == "Calm") {
+                // chance — unless favoritesFirst is off (top-bar toggle), for
+                // when you'd rather get a fresh mix than the same favorited
+                // handful every time. 收藏/随机 don't need this split — one's
+                // already all-favorites, the other's meant to be a flat shuffle.
+                val ordered = if ((mood == "Energetic" || mood == "Calm") && favoritesFirst) {
                     val (favorites, rest) = filtered.partition { it.isFavorite }
                     if (shuffleActive) favorites.shuffled() + rest.shuffled() else favorites + rest
                 } else if (shuffleActive) {
@@ -146,6 +153,13 @@ fun HomeScreen() {
             TopAppBar(
                 title = { Text(text = "Music", fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = { scope.launch { settingsRepository.setFavoritesFirst(!favoritesFirst) } }) {
+                        Icon(
+                            if (favoritesFirst) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                            contentDescription = if (favoritesFirst) "激情/平静优先播放收藏（点击关闭）" else "激情/平静优先播放收藏（已关闭，点击开启）",
+                            tint = if (favoritesFirst) Color(0xFFF06AA0) else LocalContentColor.current
+                        )
+                    }
                     IconButton(onClick = { showQueue = true }) {
                         Icon(Icons.Filled.QueueMusic, contentDescription = "播放队列")
                     }

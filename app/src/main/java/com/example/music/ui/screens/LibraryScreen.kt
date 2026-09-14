@@ -3,6 +3,7 @@ package com.example.music.ui.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -72,6 +73,7 @@ import com.example.music.ui.components.QueueSheet
 import com.example.music.ui.components.SongSearchOverlay
 import com.example.music.ui.theme.MoodColors
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private sealed class LibraryListItem {
@@ -81,6 +83,9 @@ private sealed class LibraryListItem {
 
 /** How many songs ahead in the queue still get a numbered badge in Library — see upcomingPositions. */
 private const val UPCOMING_HORIZON = 5
+
+/** Warm amber rather than the app's own primary (purple/pink) — reads as a clear "here it is" glow instead of blending muddily into an already-tinted row. See flashRow. */
+private val FLASH_HIGHLIGHT_COLOR = Color(0xFFFFC107)
 
 /**
  * Scrolls so the target item lands roughly in the middle of the visible
@@ -186,11 +191,13 @@ fun LibraryScreen() {
         flashJob?.cancel()
         flashSongId = songId
         flashJob = scope.launch {
-            repeat(2) {
-                flashAlpha.snapTo(0f)
-                flashAlpha.animateTo(1f, tween(150))
-                flashAlpha.animateTo(0f, tween(150))
-            }
+            // One clear glow rather than a fast double-blink: snaps in quick
+            // enough to feel immediate, holds so it actually registers, then
+            // fades out slowly instead of just vanishing.
+            flashAlpha.snapTo(0f)
+            flashAlpha.animateTo(1f, tween(200, easing = FastOutSlowInEasing))
+            delay(300)
+            flashAlpha.animateTo(0f, tween(700, easing = FastOutSlowInEasing))
             flashSongId = null
         }
     }
@@ -490,7 +497,7 @@ private fun SongRow(
             .background(
                 if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else Color.Transparent
             )
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = flashProgress * 0.35f))
+            .background(FLASH_HIGHLIGHT_COLOR.copy(alpha = flashProgress * 0.55f))
             .combinedClickable(onClick = onRowClick, onLongClick = { showMoodMenu = true })
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically

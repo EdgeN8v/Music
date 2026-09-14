@@ -11,6 +11,18 @@ data class ChangelogEntry(val version: String, val notes: List<String>)
 object Changelog {
     val entries = listOf(
         ChangelogEntry(
+            version = "0.15",
+            notes = listOf(
+                "修复：网络不稳定时歌曲卡住暂停、点播放没反应——现在播放出错会自动重试，播放键也会先重新准备再播放",
+                "加强系统音频焦点处理，尝试修复被别的 App 抢占音频后耳机/通知栏控制失灵的问题",
+                "新增：Home 顶部可以关闭\"激情/平静优先播放收藏\"，不想总听那几首可以关掉",
+                "新增：播放队列长按一首歌可以直接置顶，不用从队列底部慢慢拖上来",
+                "队列页面加高，一次能看到更多歌",
+                "取消点击 MiniPlayer 弹出大卡片——顺序/单曲循环/随机的切换按钮直接挪到了 MiniPlayer 最左边，一键切换",
+                "重新设计了搜索/定位后的高亮效果，更明显、颜色更好看"
+            )
+        ),
+        ChangelogEntry(
             version = "0.14",
             notes = listOf(
                 "修复：激情/平静标记的匹配 key 里混进了一个肉眼不可见的隐藏字符，导致导入的标记文件永远匹配不上——这是从 0.11 就存在的老 bug",

@@ -1,7 +1,6 @@
 package com.example.music.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,6 +10,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PauseCircleFilled
 import androidx.compose.material.icons.filled.PlayCircleFilled
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -31,13 +32,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.music.playback.PlayMode
 import com.example.music.playback.PlayerController
 
 /**
  * Now-playing strip shown above the bottom nav bar on every screen whenever
- * something is loaded into the player, so it's always visible which song is
- * playing, whether it's paused, and whether 随机 (shuffle) mode is active —
- * plus previous/next so you're not stuck on one track.
+ * something is loaded into the player — title/artist, a scrubber, transport
+ * controls, and (leftmost) the 顺序/单曲循环/随机 cycle button, one tap to
+ * advance it. Used to also open a bigger "now playing" card on tap, but that
+ * card was just a bigger, mostly-redundant version of what's already here
+ * (Library already covers "find/favorite a song", the queue button in
+ * Home/Library's top bar covers "what's next") — removed rather than kept
+ * as a second thing to maintain.
  *
  * Renders nothing (zero height) when nothing is loaded yet.
  */
@@ -45,7 +51,7 @@ import com.example.music.playback.PlayerController
 fun MiniPlayerBar() {
     val currentSong by PlayerController.currentSong.collectAsState()
     val isPlaying by PlayerController.isPlaying.collectAsState()
-    val isShuffled by PlayerController.isShuffled.collectAsState()
+    val playMode by PlayerController.playMode.collectAsState()
     val positionMs by PlayerController.currentPositionMs.collectAsState()
     val durationMs by PlayerController.durationMs.collectAsState()
 
@@ -54,7 +60,6 @@ fun MiniPlayerBar() {
     // While dragging, follow the finger instead of the real playback
     // position (which would otherwise fight the drag every 500ms).
     var dragPositionMs by remember { mutableStateOf<Float?>(null) }
-    var showNowPlaying by remember { mutableStateOf(false) }
 
     Column {
         HorizontalDivider()
@@ -81,20 +86,17 @@ fun MiniPlayerBar() {
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (isShuffled) {
-                Icon(
-                    Icons.Filled.Shuffle,
-                    contentDescription = "随机播放中",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .size(18.dp)
-                        .padding(start = 4.dp, end = 6.dp)
-                )
+            IconButton(onClick = { PlayerController.cyclePlayMode() }) {
+                val (icon, label) = when (playMode) {
+                    PlayMode.SEQUENTIAL -> Icons.Filled.Repeat to "顺序播放，点击切换"
+                    PlayMode.REPEAT_ONE -> Icons.Filled.RepeatOne to "单曲循环，点击切换"
+                    PlayMode.SHUFFLE -> Icons.Filled.Shuffle to "随机播放，点击切换"
+                }
+                Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.primary)
             }
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .clickable { showNowPlaying = true }
                     .padding(horizontal = 4.dp)
             ) {
                 Text(
@@ -127,9 +129,5 @@ fun MiniPlayerBar() {
                 Icon(Icons.Filled.SkipNext, contentDescription = "下一首")
             }
         }
-    }
-
-    if (showNowPlaying) {
-        NowPlayingSheet(onDismiss = { showNowPlaying = false })
     }
 }

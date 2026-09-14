@@ -2,8 +2,10 @@ package com.example.music.playback
 
 import android.content.Context
 import android.net.Uri
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
@@ -63,6 +65,9 @@ object PlayerController {
 
     /** Guards [restoreFromSavedStateIfNeeded] to only ever act once per process — see its doc. */
     private var restoreAttempted = false
+
+    /** Consecutive auto-retries after a playback error — see onPlayerError, reset on any successful onIsPlayingChanged(true). */
+    private var consecutiveErrorRetries = 0
 
     // Backed by StateFlow (not a plain var) so the UI can show "this song is
     // 3rd in the queue" style badges instead of only knowing what's playing
@@ -204,10 +209,23 @@ object PlayerController {
         }
         player = ExoPlayer.Builder(appContext)
             .setMediaSourceFactory(DefaultMediaSourceFactory(appContext).setDataSourceFactory(dataSourceFactory))
+            // Explicit (not just relying on ExoPlayer's default) so this
+            // player properly requests/releases system audio focus — losing
+            // it (another app's video/audio starting) should duck/pause us
+            // the standard way instead of some undefined in-between state.
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                /* handleAudioFocus = */ true
+            )
+            .setHandleAudioBecomingNoisy(true)
             .build().apply {
                 addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         _isPlaying.value = isPlaying
+                        if (isPlaying) consecutiveErrorRetries = 0
                     }
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         if (playbackState == Player.STATE_ENDED) {
@@ -219,6 +237,24 @@ object PlayerController {
                             } else {
                                 skipToNext()
                             }
+                        }
+                    }
+                    override fun onPlayerError(error: PlaybackException) {
+                        // A network hiccup drops ExoPlayer into STATE_IDLE with an
+                        // error attached — calling play() again from there does
+                        // nothing, it needs a fresh prepare(). Without this,
+                        // playback on a flaky connection got silently stuck until
+                        // you manually skipped back and forth (which happens to
+                        // work because playAt() always calls prepare()). Capped
+                        // retries with a short backoff so a genuinely dead
+                        // connection doesn't spin forever in the background.
+                        if (consecutiveErrorRetries >= 3) return
+                        consecutiveErrorRetries++
+                        val exo = this@apply
+                        mainScope.launch {
+                            delay(1500)
+                            exo.prepare()
+                            exo.play()
                         }
                     }
                 })
@@ -483,6 +519,14 @@ object PlayerController {
             exo.pause()
             persistPlaybackStateNow()
         } else {
+            // If a playback error (or exhausted auto-retries, see
+            // onPlayerError) left the player sitting in STATE_IDLE, play()
+            // alone does nothing from there — needs a fresh prepare() first.
+            // This is the "tapped play, nothing happened" bug.
+            if (exo.playbackState == Player.STATE_IDLE) {
+                consecutiveErrorRetries = 0
+                exo.prepare()
+            }
             exo.play()
         }
     }
