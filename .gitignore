@@ -1,0 +1,32 @@
+# Local machine config — sdk.dir differs per developer
+local.properties
+
+# Build outputs
+build/
+*/build/
+.gradle/
+captures/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Signing (never commit a real keystore)
+*.jks
+*.keystore
+
+# Built APKs go up as GitHub Release assets, not into the repo itself
+*.apk
+
+# Stale early scaffold superseded by the app/ module at the repo root —
+# kept on disk locally but not part of the public project.
+MusicApp/
+
+# Claude Code session-local state, not part of the project
+.claude/
+
+# Python
+__pycache__/
+*.pyc
