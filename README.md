@@ -1,5 +1,9 @@
 # Music
 
+<p align="center">
+  <b>简体中文</b> | <a href="README_EN.md">English</a>
+</p>
+
 一个自用的 Android 音乐播放器，用 Kotlin + Jetpack Compose 写的。连自己的 [Navidrome](https://www.navidrome.org/)（Subsonic 协议）服务器听歌，服务器不在身边时自动退回读 U 盘；首页按"心情"分类播放，心情是本地一个独立的标记文件说了算，不依赖歌曲文件本身的标签。
 
 这个项目从头到尾都是跟 [Claude Code](https://claude.com/claude-code) 结对写出来的——包括这份 README、下面的踩坑记录，都是。仓库开源出来，一是给自己留个存档，二是如果你也想要个"能连自己 NAS、心情分类靠谱、体积小"的播放器，直接照着下面的步骤应该能跑起来。
@@ -26,6 +30,7 @@
 - [项目结构](#项目结构)
 - [已知限制 / 没做的事](#已知限制--没做的事)
 - [踩过的坑](#踩过的坑)
+- [更新日志](#更新日志)
 - [License](#license)
 
 ---
@@ -176,7 +181,7 @@ app/src/main/java/com/example/music/
 ├── data/               # SongRepository / SubsonicClient / SettingsRepository / LibraryCache …
 ├── playback/           # PlayerController（ExoPlayer 封装）/ AudioCache / PlaybackService（MediaSession）
 ├── ui/screens/         # HomeScreen / LibraryScreen / SettingsScreen
-├── ui/components/      # MiniPlayerBar / NowPlayingContent / QueueSheet / SongSearchOverlay …
+├── ui/components/      # MiniPlayerBar / QueueSheet / SongSearchOverlay / MoodTile …
 ├── ui/navigation/      # AppNavigation（NavHost + 底部导航）
 └── util/               # PinyinUtil（拼音排序/索引）
 
@@ -193,6 +198,10 @@ tools/                  # PC 端的心情分类 + 标签清理脚本（Python）
 ## 踩过的坑
 
 调这个项目的过程中踩过几个不算小的坑，单独写在 [`docs/LESSONS_LEARNED.md`](docs/LESSONS_LEARNED.md) 里——包括一个隐藏控制字符让心情标记全库失效、排查一半才发现是自己的诊断工具本身有 bug、以及一次因为 CoroutineScope 生命周期没管好导致的静默数据丢失。如果你也在写类似的东西，也许能帮你少走点路。
+
+## 更新日志
+
+每个版本改了什么见 [`CHANGELOG.md`](CHANGELOG.md)，跟 Settings 里版本号弹出的那份是同一份数据。
 
 ## License
 
