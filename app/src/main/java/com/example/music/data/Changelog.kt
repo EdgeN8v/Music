@@ -11,6 +11,13 @@ data class ChangelogEntry(val version: String, val notes: List<String>)
 object Changelog {
     val entries = listOf(
         ChangelogEntry(
+            version = "0.16",
+            notes = listOf(
+                "修复：重新打开 App 播放模式总是重置成顺序播放——现在会记住你上次的顺序/单曲循环/随机",
+                "修复：点激情/平静后再切到随机，收藏的歌不再优先播放了——现在切换播放模式时收藏依然优先"
+            )
+        ),
+        ChangelogEntry(
             version = "0.15",
             notes = listOf(
                 "修复：网络不稳定时歌曲卡住暂停、点播放没反应——现在播放出错会自动重试，播放键也会先重新准备再播放",

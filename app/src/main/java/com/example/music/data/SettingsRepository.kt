@@ -52,6 +52,7 @@ class SettingsRepository(private val context: Context) {
         val MOOD_LABELS = stringPreferencesKey("mood_labels")
         val PLAYBACK_STATE = stringPreferencesKey("playback_state")
         val FAVORITES_FIRST = booleanPreferencesKey("favorites_first")
+        val PLAY_MODE = stringPreferencesKey("play_mode")
     }
 
     val config: Flow<ServerConfig> = context.dataStore.data.map { prefs ->
@@ -93,6 +94,20 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun saveMusicMode(mode: MusicMode) {
         context.dataStore.edit { prefs -> prefs[Keys.MUSIC_MODE] = mode.name }
+    }
+
+    /**
+     * Raw 顺序/单曲循环/随机 mode name (SEQUENTIAL/REPEAT_ONE/SHUFFLE) so it
+     * survives an app restart — without this, every cold start reset back to
+     * SEQUENTIAL regardless of what you'd left it on, which made 激情/平静
+     * always start from the same handful of songs. The PlayMode enum itself
+     * lives in the playback package, not here, so this just persists
+     * whatever string PlayerController hands it — no dependency the other way.
+     */
+    val playModeName: Flow<String?> = context.dataStore.data.map { prefs -> prefs[Keys.PLAY_MODE] }
+
+    suspend fun savePlayModeName(name: String) {
+        context.dataStore.edit { prefs -> prefs[Keys.PLAY_MODE] = name }
     }
 
     /**

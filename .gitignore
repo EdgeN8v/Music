@@ -30,3 +30,6 @@ MusicApp/
 # Python
 __pycache__/
 *.pyc
+
+# Scratch commit-message files used to avoid PowerShell quoting issues
+.git-commit-msg.txt

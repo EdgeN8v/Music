@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.example.music.data.MusicSource
 import com.example.music.data.SettingsRepository
+import com.example.music.playback.PlayMode
 import com.example.music.playback.PlaybackService
 import com.example.music.playback.PlayerController
 import com.example.music.ui.navigation.AppNavigation
@@ -35,7 +36,15 @@ class MainActivity : ComponentActivity() {
         val settingsRepository = SettingsRepository(applicationContext)
         val cacheSettings = runBlocking { settingsRepository.cacheSettings.first() }
         val initiallyConfigured = runBlocking { settingsRepository.config.first().isConfigured }
-        PlayerController.init(applicationContext, cacheSettings.limitMb, cacheSettings.enabled)
+        // Restores whatever 顺序/单曲循环/随机 mode was last set instead of
+        // always starting SEQUENTIAL — otherwise 激情/平静 always opened on
+        // the same handful of songs regardless of what you'd left it on.
+        val initialPlayMode = runBlocking {
+            settingsRepository.playModeName.first()?.let {
+                try { PlayMode.valueOf(it) } catch (e: IllegalArgumentException) { PlayMode.SEQUENTIAL }
+            } ?: PlayMode.SEQUENTIAL
+        }
+        PlayerController.init(applicationContext, cacheSettings.limitMb, cacheSettings.enabled, initialPlayMode)
         MusicSource.init(applicationContext)
 
         // Hosts the MediaSession that headset buttons / Bluetooth / lock-screen

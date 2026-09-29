@@ -118,12 +118,23 @@ object PlayerController {
     val playMode: StateFlow<PlayMode> = _playMode.asStateFlow()
 
     /**
+     * Mirrors [SettingsRepository.favoritesFirst] so [reorderRemainingQueue]
+     * can read it synchronously (it's called straight from the UI's
+     * cyclePlayMode() tap, not from a suspend context) instead of needing an
+     * async DataStore read on every mode toggle. Kept up to date by a
+     * collector started in [init].
+     */
+    private val _favoritesFirstPref = MutableStateFlow(true)
+
+    /**
      * Toggling this used to only affect the queue the *next* time it looped
      * back to the start or a fresh queue was built — the rest of what was
      * already queued up just sat there unchanged, so flipping sequential
      * <-> shuffle mid-playback visibly did nothing until you'd listened all
      * the way through. Now it re-sorts/re-shuffles the not-yet-played tail
-     * of the current queue immediately (see [reorderRemainingQueue]).
+     * of the current queue immediately (see [reorderRemainingQueue]). Also
+     * persisted so it survives an app restart instead of always resetting to
+     * SEQUENTIAL — see [SettingsRepository.playModeName].
      */
     fun cyclePlayMode() {
         val newMode = when (_playMode.value) {
@@ -132,6 +143,7 @@ object PlayerController {
             PlayMode.SHUFFLE -> PlayMode.SEQUENTIAL
         }
         _playMode.value = newMode
+        settingsRepository?.let { repo -> backgroundScope.launch { repo.savePlayModeName(newMode.name) } }
         when (newMode) {
             PlayMode.SHUFFLE -> {
                 reorderRemainingQueue(shuffle = true)
@@ -154,6 +166,14 @@ object PlayerController {
      * order the library/mood filter would naturally produce, by looking up
      * each remaining song's position in [SongRepository.library] rather than
      * trying to remember whatever order it was in before an earlier shuffle.
+     *
+     * If this queue came from 激情/平静 (see [_activeMood]) and the
+     * favorites-first setting is on, favorited songs stay grouped first
+     * through the reorder too — otherwise switching to 随机 mid-queue used
+     * to flatten everything into one pool and favorites stopped being
+     * prioritized, which looked like the setting had silently turned itself
+     * off. Uses each song's *current* favorite status (looked up in
+     * [SongRepository.library]), not whatever was true when the queue was built.
      */
     private fun reorderRemainingQueue(shuffle: Boolean) {
         val current = queueValue
@@ -164,11 +184,19 @@ object PlayerController {
         val explicitRun = tail.takeWhile { it.id in pendingNextIds }
         val ambientRest = tail.drop(explicitRun.size)
         if (ambientRest.isEmpty()) return
-        val newAmbient = if (shuffle) {
+
+        val naturalIndex = SongRepository.library.value.withIndex().associate { (i, s) -> s.id to i }
+        fun sequential(songs: List<Song>) = songs.sortedBy { naturalIndex[it.id] ?: Int.MAX_VALUE }
+
+        val applyFavoritesFirst = (_activeMood.value == "Energetic" || _activeMood.value == "Calm") && _favoritesFirstPref.value
+        val newAmbient = if (applyFavoritesFirst) {
+            val liveFavoriteIds = SongRepository.library.value.filter { it.isFavorite }.mapTo(HashSet()) { it.id }
+            val (favorites, rest) = ambientRest.partition { it.id in liveFavoriteIds }
+            if (shuffle) favorites.shuffled() + rest.shuffled() else sequential(favorites) + sequential(rest)
+        } else if (shuffle) {
             ambientRest.shuffled()
         } else {
-            val naturalIndex = SongRepository.library.value.withIndex().associate { (i, s) -> s.id to i }
-            ambientRest.sortedBy { naturalIndex[it.id] ?: Int.MAX_VALUE }
+            sequential(ambientRest)
         }
         queueValue = head + explicitRun + newAmbient
     }
@@ -196,11 +224,20 @@ object PlayerController {
         dataSpec.uri.getQueryParameter("id")?.let { "song:$it" } ?: dataSpec.uri.toString()
     }
 
-    fun init(context: Context, cacheLimitMb: Int = 500, cacheEnabled: Boolean = true) {
+    fun init(
+        context: Context,
+        cacheLimitMb: Int = 500,
+        cacheEnabled: Boolean = true,
+        initialPlayMode: PlayMode = PlayMode.SEQUENTIAL
+    ) {
         if (player != null) return
         val appContext = context.applicationContext
         this.appContext = appContext
-        this.settingsRepository = SettingsRepository(appContext)
+        val repo = SettingsRepository(appContext)
+        this.settingsRepository = repo
+        _playMode.value = initialPlayMode
+        _isShuffled.value = initialPlayMode == PlayMode.SHUFFLE
+        backgroundScope.launch { repo.favoritesFirst.collect { _favoritesFirstPref.value = it } }
         val dataSourceFactory: DataSource.Factory = if (cacheEnabled) {
             cache = AudioCache.get(appContext, cacheLimitMb)
             cacheDataSourceFactory()
