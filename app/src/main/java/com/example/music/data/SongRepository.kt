@@ -4,13 +4,17 @@ import android.content.Context
 import android.net.Uri
 import com.example.music.util.PinyinUtil
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Holds whatever song list the Library screen is currently showing, plus
@@ -78,13 +82,39 @@ object SongRepository {
      * was the "have to wait for the whole library before you can even play
      * something" complaint.
      */
+    // Home and Library each kick off ensureLoaded() as they appear, so on a
+    // cold start two hydrates could run at once — each re-reading the cache
+    // and re-sorting the whole library. The second now waits for the first
+    // and then sees the library already filled.
+    private val hydrateMutex = Mutex()
+
     suspend fun hydrateFromCache(context: Context, config: ServerConfig) {
         if (_library.value.isNotEmpty()) return
-        val labels = SettingsRepository(context).moodLabels.first()
-        LibraryCache.read(context, config)?.let { cached ->
-            if (cached.isNotEmpty()) setIndexed(PinyinUtil.indexAndSort(applyMoodLabels(cached, labels)))
+        hydrateMutex.withLock {
+            if (_library.value.isNotEmpty()) return
+            val labels = SettingsRepository(context).moodLabels.first()
+            LibraryCache.read(context, config)?.let { cached ->
+                if (cached.isNotEmpty()) setIndexed(sortOffMain(context, applyMoodLabels(cached, labels)))
+            }
         }
     }
+
+    /**
+     * The pinyin sort is the expensive part of loading a library (~1.5s for
+     * ~1200 songs on a cold start, almost all of it ICU transliteration).
+     * Runs off the main thread, and persists the per-title sort keys
+     * ([PinyinUtil.saveKeyCache]) so every cold start after the first only
+     * has to transliterate songs it hasn't seen before.
+     */
+    private suspend fun sortOffMain(context: Context, songs: List<Song>): List<PinyinUtil.IndexedSong> =
+        withContext(Dispatchers.Default) {
+            val keyFile = File(context.filesDir, "pinyin_keys_v${PinyinUtil.KEY_CACHE_VERSION}.json")
+            PinyinUtil.loadKeyCache(keyFile)
+            val before = PinyinUtil.keyCacheSize()
+            val sorted = PinyinUtil.indexAndSort(songs)
+            if (PinyinUtil.keyCacheSize() != before) PinyinUtil.saveKeyCache(keyFile)
+            sorted
+        }
 
     /**
      * If this coroutine gets cancelled mid-load (e.g. the screen that called
@@ -102,7 +132,7 @@ object SongRepository {
         try {
             when (val result = SubsonicClient.getAllSongs(config)) {
                 is SubsonicClient.ApiResult.Success -> {
-                    setIndexed(PinyinUtil.indexAndSort(applyMoodLabels(result.data, labels)))
+                    setIndexed(sortOffMain(context, applyMoodLabels(result.data, labels)))
                     LibraryCache.write(context, config, result.data)
                 }
                 is SubsonicClient.ApiResult.Failure -> {
@@ -144,7 +174,7 @@ object SongRepository {
             }
             val labels = SettingsRepository(context).moodLabels.first()
             val songs = applyMoodLabels(scanned.map { it.copy(isFavorite = it.id in favoriteIds) }, labels)
-            setIndexed(PinyinUtil.indexAndSort(songs))
+            setIndexed(sortOffMain(context, songs))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -161,11 +191,22 @@ object SongRepository {
         _error.value = null
     }
 
-    // NonCancellable for the same reason as setMoodLabel below: this is
-    // launched from a screen-scoped coroutine scope (the heart icon in
-    // Library/search), and navigating away right after tapping it must not
-    // abort the write/star call mid-flight.
-    suspend fun toggleFavorite(context: Context, config: ServerConfig, song: Song) = withContext(NonCancellable) {
+    /**
+     * NonCancellable for the same reason as setMoodLabel below: this is
+     * launched from a screen-scoped coroutine scope (the heart icon in
+     * Library/search), and navigating away right after tapping it must not
+     * abort the write/star call mid-flight.
+     *
+     * Returns the failure message, or null on success — a star/unstar call
+     * to the server can fail (network down, DNS hiccup, …) just like any
+     * other request, and before this it failed completely silently: the
+     * heart icon would flip on tap and immediately flip back with no
+     * explanation, which looked exactly like "the button doesn't work"
+     * rather than "that one request failed". Callers with a SnackbarHost
+     * can surface this; ones that don't (MiniPlayerBar, the queue sheet)
+     * just ignore the return value, same silent-revert behavior as before.
+     */
+    suspend fun toggleFavorite(context: Context, config: ServerConfig, song: Song): String? = withContext(NonCancellable) {
         val wasFavorite = song.isFavorite
 
         if (song.localUri != null) {
@@ -174,7 +215,7 @@ object SongRepository {
             setIndexed(_indexedLibrary.value.map {
                 if (it.song.id == song.id) it.copy(song = it.song.copy(isFavorite = !wasFavorite)) else it
             })
-            return@withContext
+            return@withContext null
         }
 
         // optimistic update so the heart responds instantly — order/letters are
@@ -193,7 +234,9 @@ object SongRepository {
                 if (it.song.id == song.id) it.copy(song = it.song.copy(isFavorite = wasFavorite)) else it
             })
             _error.value = result.message
+            return@withContext result.message
         }
+        null
     }
 
     /**

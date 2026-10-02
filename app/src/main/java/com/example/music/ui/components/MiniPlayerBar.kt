@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PauseCircleFilled
 import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material.icons.filled.Repeat
@@ -27,13 +29,20 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.music.data.ServerConfig
+import com.example.music.data.SettingsRepository
+import com.example.music.data.SongRepository
 import com.example.music.playback.PlayMode
 import com.example.music.playback.PlayerController
+import kotlinx.coroutines.launch
 
 /**
  * Now-playing strip shown above the bottom nav bar on every screen whenever
@@ -49,13 +58,23 @@ import com.example.music.playback.PlayerController
  */
 @Composable
 fun MiniPlayerBar() {
+    val context = LocalContext.current
+    val settingsRepository = remember { SettingsRepository(context) }
+    val config by settingsRepository.config.collectAsState(initial = ServerConfig())
+    val scope = rememberCoroutineScope()
+
     val currentSong by PlayerController.currentSong.collectAsState()
     val isPlaying by PlayerController.isPlaying.collectAsState()
     val playMode by PlayerController.playMode.collectAsState()
     val positionMs by PlayerController.currentPositionMs.collectAsState()
     val durationMs by PlayerController.durationMs.collectAsState()
+    val library by SongRepository.library.collectAsState()
 
-    val song = currentSong ?: return
+    val rawSong = currentSong ?: return
+    // currentSong is a snapshot from whenever the queue was built — look up
+    // the live copy so the heart reflects favorite-toggles made elsewhere
+    // (e.g. in Library) instead of a possibly-stale flag from queue-build time.
+    val song = library.find { it.id == rawSong.id } ?: rawSong
 
     // While dragging, follow the finger instead of the real playback
     // position (which would otherwise fight the drag every 500ms).
@@ -127,6 +146,13 @@ fun MiniPlayerBar() {
             }
             IconButton(onClick = { PlayerController.skipToNext() }) {
                 Icon(Icons.Filled.SkipNext, contentDescription = "下一首")
+            }
+            IconButton(onClick = { scope.launch { SongRepository.toggleFavorite(context, config, song) } }) {
+                Icon(
+                    imageVector = if (song.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    contentDescription = "收藏",
+                    tint = if (song.isFavorite) Color(0xFFF06AA0) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

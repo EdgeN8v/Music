@@ -5,8 +5,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -19,6 +22,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -81,6 +86,34 @@ private fun InfoIconButton(text: String) {
             confirmButton = { TextButton(onClick = { show = false }) { Text("知道了") } },
             text = { Text(text, style = MaterialTheme.typography.bodyMedium) }
         )
+    }
+}
+
+/**
+ * One titled group on the settings page — consistent header (small, primary
+ * colored, optional (i) and a trailing control like a switch) and a thin
+ * divider above every group but the first, so the page reads as a few
+ * clearly separate blocks instead of one long run of mismatched controls.
+ */
+@Composable
+private fun SettingsSection(
+    title: String,
+    first: Boolean = false,
+    info: String? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (!first) HorizontalDivider(modifier = Modifier.padding(vertical = 20.dp))
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                if (info != null) InfoIconButton(info)
+            }
+            trailing?.invoke()
+        }
+        Spacer(Modifier.height(8.dp))
+        content()
     }
 }
 
@@ -214,245 +247,240 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp)
         ) {
-            Text("Theme", style = MaterialTheme.typography.titleMedium)
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)) {
-                val options = listOf(
-                    AppThemeMode.SYSTEM to "系统",
-                    AppThemeMode.LIGHT to "浅色",
-                    AppThemeMode.DARK to "深色"
-                )
-                options.forEachIndexed { index, (mode, label) ->
-                    SegmentedButton(
-                        selected = currentTheme == mode,
-                        onClick = { onThemeChange(mode) },
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
-                    ) {
-                        Text(label)
+            SettingsSection(title = "外观", first = true) {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    val options = listOf(
+                        AppThemeMode.SYSTEM to "系统",
+                        AppThemeMode.LIGHT to "浅色",
+                        AppThemeMode.DARK to "深色"
+                    )
+                    options.forEachIndexed { index, (mode, label) ->
+                        SegmentedButton(
+                            selected = currentTheme == mode,
+                            onClick = { onThemeChange(mode) },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                            icon = {}
+                        ) {
+                            Text(label)
+                        }
                     }
                 }
             }
 
-            Row(
-                modifier = Modifier.padding(top = 4.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            SettingsSection(
+                title = "音乐来源",
+                info = "自动：插 U 盘就用 U 盘，没插就用网络。也可以手动固定成只用网络或只用 U 盘。"
             ) {
-                Text("音乐来源", style = MaterialTheme.typography.titleMedium)
-                InfoIconButton("自动：插 U 盘就用 U 盘，没插就用网络。也可以在下面手动固定成只用网络或只用 U 盘。")
-            }
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)) {
-                val options = listOf(
-                    MusicMode.AUTO to "自动",
-                    MusicMode.NETWORK to "网络",
-                    MusicMode.USB to "U盘"
-                )
-                options.forEachIndexed { index, (mode, label) ->
-                    SegmentedButton(
-                        selected = musicMode == mode,
-                        onClick = { scope.launch { settingsRepository.saveMusicMode(mode) } },
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
-                    ) {
-                        Text(label)
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    val options = listOf(
+                        MusicMode.AUTO to "自动",
+                        MusicMode.NETWORK to "网络",
+                        MusicMode.USB to "U盘"
+                    )
+                    options.forEachIndexed { index, (mode, label) ->
+                        SegmentedButton(
+                            selected = musicMode == mode,
+                            onClick = { scope.launch { settingsRepository.saveMusicMode(mode) } },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                            icon = {}
+                        ) {
+                            Text(label)
+                        }
                     }
                 }
-            }
-            Text(
-                when {
-                    usbTreeUri == null && !usbPresent -> "未检测到 U 盘"
-                    usbTreeUri == null && usbPresent -> "🔌 检测到 U 盘，还没授权"
-                    isUsbActive -> "🔌 U 盘模式"
-                    else -> "网络模式"
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Row(modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)) {
-                Button(onClick = { usbAccessLauncher.launch(UsbLibrarySource.createAccessIntent(context)) }) {
-                    Text(if (usbTreeUri == null) "授权访问 U 盘" else "更换 / 重新授权 U 盘")
+                Text(
+                    when {
+                        usbTreeUri == null && !usbPresent -> "未检测到 U 盘"
+                        usbTreeUri == null && usbPresent -> "🔌 检测到 U 盘，还没授权"
+                        isUsbActive -> "🔌 U 盘模式"
+                        else -> "网络模式"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                // Only worth showing while a drive is actually around (or you've
+                // pinned U 盘 mode and are about to plug one in) — otherwise it's
+                // a button you can't use sitting in the way.
+                if (usbPresent || isUsbActive || musicMode == MusicMode.USB) {
+                    TextButton(onClick = { usbAccessLauncher.launch(UsbLibrarySource.createAccessIntent(context)) }) {
+                        Text(if (usbTreeUri == null) "授权访问 U 盘" else "更换 / 重新授权 U 盘")
+                    }
                 }
-            }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { connectionExpanded = !connectionExpanded },
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Navidrome / Subsonic", style = MaterialTheme.typography.titleMedium)
-                    if (!connectionExpanded) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .clickable { connectionExpanded = !connectionExpanded },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Navidrome 服务器", style = MaterialTheme.typography.bodyLarge)
+                        if (!connectionExpanded) {
+                            Text(
+                                if (serverUrl.isNotBlank()) serverUrl else "未配置",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Icon(
+                        if (connectionExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = if (connectionExpanded) "收起" else "展开"
+                    )
+                }
+
+                AnimatedVisibility(visible = connectionExpanded) {
+                    Column {
                         Text(
-                            if (serverUrl.isNotBlank()) serverUrl else "未配置",
-                            style = MaterialTheme.typography.bodyMedium,
+                            "连接到你部署在 NAS 上的 Navidrome",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+
+                        OutlinedTextField(
+                            value = serverUrl,
+                            onValueChange = { serverUrl = it; status = ConnectionStatus.Idle },
+                            label = { Text("Server URL，如 http://1.2.3.4:4533") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
+                        )
+                        OutlinedTextField(
+                            value = username,
+                            onValueChange = { username = it; status = ConnectionStatus.Idle },
+                            label = { Text("Username") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
+                        )
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = { password = it; status = ConnectionStatus.Idle },
+                            label = { Text("Password") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier.padding(top = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(onClick = {
+                                val config = ServerConfig(serverUrl, username, password)
+                                status = ConnectionStatus.Testing
+                                scope.launch {
+                                    settingsRepository.save(config)
+                                    when (val result = SubsonicClient.ping(config)) {
+                                        is SubsonicClient.ApiResult.Success -> status = ConnectionStatus.Success
+                                        is SubsonicClient.ApiResult.Failure -> status = ConnectionStatus.Error(result.message)
+                                    }
+                                }
+                            }) {
+                                Text("保存并测试连接")
+                            }
+
+                            Row(modifier = Modifier.padding(start = 16.dp)) {
+                                when (val s = status) {
+                                    is ConnectionStatus.Testing -> CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                    is ConnectionStatus.Success -> Text("连接成功 ✓", color = MaterialTheme.colorScheme.primary)
+                                    is ConnectionStatus.Error -> Text("连接失败：${s.message}", color = MaterialTheme.colorScheme.error)
+                                    is ConnectionStatus.Idle -> {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            SettingsSection(
+                title = "缓存",
+                info = "听过的歌会缓存在手机上，下次播放不用再走一遍网络。修改上限后需要重启 App 生效。\n\n" +
+                    "「清理随机歌曲缓存」只清理既不是收藏、也没打 Energetic/Calm 标签的歌（也就是纯随机听到的）；激情/平静/收藏分类的缓存不会被清掉。",
+                trailing = {
+                    Switch(
+                        checked = cacheSettings.enabled,
+                        onCheckedChange = { scope.launch { settingsRepository.saveCacheEnabled(it) } }
+                    )
+                }
+            ) {
+                if (cacheSettings.enabled) {
+                    var sliderGb by remember(cacheSettings.limitMb) {
+                        mutableStateOf(cacheSettings.limitMb / 1000f)
+                    }
+                    val usedGb = usedBytes?.let { it / 1024f / 1024f / 1024f }
+
+                    Text(
+                        "上限 ${"%.0f".format(sliderGb)}GB" +
+                            (usedGb?.let { "　·　已缓存 ${"%.1f".format(it)}GB" } ?: ""),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Slider(
+                        value = sliderGb,
+                        onValueChange = { sliderGb = it },
+                        onValueChangeFinished = {
+                            scope.launch { settingsRepository.saveCacheLimitMb((sliderGb * 1000).toInt()) }
+                        },
+                        valueRange = 5f..20f,
+                        steps = 14
+                    )
+
+                    TextButton(
+                        onClick = {
+                            val removed = AudioCache.clearUnprotected(SongRepository.library.value)
+                            usedBytes = AudioCache.currentUsageBytes()
+                            clearRandomResultText = if (removed > 0) "已清理 $removed 首随机歌曲的缓存" else "没有可清理的随机歌曲缓存"
+                        }
+                    ) {
+                        Text("清理随机歌曲缓存")
+                    }
+                    clearRandomResultText?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                }
-                Icon(
-                    if (connectionExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                    contentDescription = if (connectionExpanded) "收起" else "展开"
-                )
-            }
-
-            AnimatedVisibility(visible = connectionExpanded) {
-                Column {
+                } else {
                     Text(
-                        "连接到你部署在 NAS 上的 Navidrome",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    OutlinedTextField(
-                        value = serverUrl,
-                        onValueChange = { serverUrl = it; status = ConnectionStatus.Idle },
-                        label = { Text("Server URL，如 http://1.2.3.4:4533") },
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 16.dp)
-                    )
-                    OutlinedTextField(
-                        value = username,
-                        onValueChange = { username = it; status = ConnectionStatus.Idle },
-                        label = { Text("Username") },
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp)
-                    )
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it; status = ConnectionStatus.Idle },
-                        label = { Text("Password") },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp)
-                    )
-
-                    Row(
-                        modifier = Modifier.padding(top = 20.dp),
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                    ) {
-                        Button(onClick = {
-                            val config = ServerConfig(serverUrl, username, password)
-                            status = ConnectionStatus.Testing
-                            scope.launch {
-                                settingsRepository.save(config)
-                                when (val result = SubsonicClient.ping(config)) {
-                                    is SubsonicClient.ApiResult.Success -> status = ConnectionStatus.Success
-                                    is SubsonicClient.ApiResult.Failure -> status = ConnectionStatus.Error(result.message)
-                                }
-                            }
-                        }) {
-                            Text("保存并测试连接")
-                        }
-
-                        Row(modifier = Modifier.padding(start = 16.dp)) {
-                            when (val s = status) {
-                                is ConnectionStatus.Testing -> CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
-                                is ConnectionStatus.Success -> Text("连接成功 ✓", color = MaterialTheme.colorScheme.primary)
-                                is ConnectionStatus.Error -> Text("连接失败：${s.message}", color = MaterialTheme.colorScheme.error)
-                                is ConnectionStatus.Idle -> {}
-                            }
-                        }
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 28.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                ) {
-                    Text("离线缓存", style = MaterialTheme.typography.titleMedium)
-                    InfoIconButton(
-                        "听过的歌会缓存在手机上，下次播放不用再走一遍网络。修改上限后需要重启 App 生效。\n\n" +
-                            "「清理随机歌曲缓存」只清理既不是收藏、也没打 Energetic/Calm 标签的歌（也就是纯随机听到的）；激情/平静/收藏分类的缓存不会被清掉。"
-                    )
-                }
-                Switch(
-                    checked = cacheSettings.enabled,
-                    onCheckedChange = { scope.launch { settingsRepository.saveCacheEnabled(it) } }
-                )
-            }
-
-            if (cacheSettings.enabled) {
-                var sliderGb by remember(cacheSettings.limitMb) {
-                    mutableStateOf(cacheSettings.limitMb / 1000f)
-                }
-                val usedGb = usedBytes?.let { it / 1024f / 1024f / 1024f }
-
-                Text(
-                    "上限 ${"%.0f".format(sliderGb)}GB" +
-                        (usedGb?.let { "　·　已缓存 ${"%.1f".format(it)}GB" } ?: ""),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 12.dp)
-                )
-                Slider(
-                    value = sliderGb,
-                    onValueChange = { sliderGb = it },
-                    onValueChangeFinished = {
-                        scope.launch { settingsRepository.saveCacheLimitMb((sliderGb * 1000).toInt()) }
-                    },
-                    valueRange = 5f..20f,
-                    steps = 14
-                )
-
-                OutlinedButton(
-                    onClick = {
-                        val removed = AudioCache.clearUnprotected(SongRepository.library.value)
-                        usedBytes = AudioCache.currentUsageBytes()
-                        clearRandomResultText = if (removed > 0) "已清理 $removed 首随机歌曲的缓存" else "没有可清理的随机歌曲缓存"
-                    },
-                    modifier = Modifier.padding(top = 12.dp)
-                ) {
-                    Text("清理随机歌曲缓存")
-                }
-                clearRandomResultText?.let {
-                    Text(
-                        it,
+                        "已关闭，播放时不会保存到手机",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            Row(
-                modifier = Modifier.padding(top = 28.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            SettingsSection(
+                title = "激情/平静标记",
+                info = "每首歌的「激情/平静」现在只认这一份标记文件，不再看歌曲文件本身的 genre 标签——" +
+                    "在 Library 长按一首歌改的，都是改这份文件。它只存在这台手机上，不会同步到别的设备，" +
+                    "导出一份存到网盘/NAS/邮箱等地方，换手机后再导入就不用重新标一遍；" +
+                    "首次用 tools/export_mood_labels.py 批量分类出来的结果，也是从这里导入进来。"
             ) {
-                Text("激情/平静标记", style = MaterialTheme.typography.titleMedium)
-                InfoIconButton(
-                    "每首歌的「激情/平静」现在只认这一份标记文件，不再看歌曲文件本身的 genre 标签——" +
-                        "在 Library 长按一首歌改的，都是改这份文件。它只存在这台手机上，不会同步到别的设备，" +
-                        "导出一份存到网盘/NAS/邮箱等地方，换手机后再导入就不用重新标一遍；" +
-                        "首次用 tools/export_mood_labels.py 批量分类出来的结果，也是从这里导入进来。"
-                )
-            }
-            Row(modifier = Modifier.padding(top = 8.dp)) {
-                Button(onClick = { moodExportLauncher.launch("mood_labels.json") }) {
-                    Text("导出到文件")
+                Row {
+                    TextButton(onClick = { moodExportLauncher.launch("mood_labels.json") }) {
+                        Text("导出到文件")
+                    }
+                    TextButton(
+                        onClick = { moodImportLauncher.launch(arrayOf("application/json", "application/octet-stream", "text/*")) }
+                    ) {
+                        Text("从文件导入")
+                    }
                 }
-                OutlinedButton(
-                    onClick = { moodImportLauncher.launch(arrayOf("application/json", "application/octet-stream", "text/*")) },
-                    modifier = Modifier.padding(start = 12.dp)
-                ) {
-                    Text("从文件导入")
+                moodBackupResultText?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-            }
-            moodBackupResultText?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
             }
         }
     }

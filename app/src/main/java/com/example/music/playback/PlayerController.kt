@@ -127,6 +127,23 @@ object PlayerController {
     private val _favoritesFirstPref = MutableStateFlow(true)
 
     /**
+     * The Home top-bar heart toggle. Besides persisting the setting, it now
+     * re-sorts whatever's still ahead in the current 激情/平静 queue right
+     * away — before, flipping it only changed what the *next* tile tap would
+     * do, so the queue already playing looked unaffected (same complaint as
+     * the old 顺序/随机 switch). Keeps whatever shuffle state the queue is
+     * already in; non-激情/平静 queues are left alone since the setting
+     * doesn't apply to them.
+     */
+    fun setFavoritesFirst(enabled: Boolean) {
+        _favoritesFirstPref.value = enabled
+        settingsRepository?.let { repo -> backgroundScope.launch { repo.setFavoritesFirst(enabled) } }
+        if (_activeMood.value == "Energetic" || _activeMood.value == "Calm") {
+            reorderRemainingQueue(shuffle = _isShuffled.value)
+        }
+    }
+
+    /**
      * Toggling this used to only affect the queue the *next* time it looped
      * back to the start or a fresh queue was built — the rest of what was
      * already queued up just sat there unchanged, so flipping sequential
@@ -507,15 +524,16 @@ object PlayerController {
     }
 
     /**
-     * Resumes whatever was playing last session, paused and cued up at the
-     * saved position instead of from 0:00 — call once, after the library has
-     * loaded, before the user has started anything new this session (see the
-     * [restoreAttempted]/queue-empty guards below; a real [setQueueAndPlay]
-     * call — the user picking something themselves — should always win, so
-     * this only ever acts once and only while nothing else has taken over).
-     * Loads the media item and seeks but leaves it paused
-     * (`playWhenReady = false`) so relaunching the app never starts blaring
-     * audio on its own — it's just ready for one tap on play.
+     * Resumes whatever was playing last session and starts playing it right
+     * away from the saved position instead of from 0:00 — opening the app
+     * should just continue the music, no extra tap (this used to load it
+     * paused, on the theory that audio starting by itself on launch would be
+     * unwelcome; opening the app *is* the "play" gesture, so it isn't).
+     * Call once, after the library has loaded, before the user has started
+     * anything new this session (see the [restoreAttempted]/queue-empty
+     * guards below; a real [setQueueAndPlay] call — the user picking
+     * something themselves — should always win, so this only ever acts once
+     * and only while nothing else has taken over).
      */
     fun restoreFromSavedStateIfNeeded(config: ServerConfig, librarySongs: List<Song>) {
         if (restoreAttempted || queueValue.isNotEmpty()) return
@@ -543,9 +561,12 @@ object PlayerController {
                 _currentPositionMs.value = state.positionMs
                 _durationMs.value = 0L
                 exo.setMediaItem(MediaItem.fromUri(mediaUri))
-                exo.playWhenReady = false
+                exo.playWhenReady = true
                 exo.prepare()
                 exo.seekTo(state.positionMs)
+                // Same as playAt: get the next couple of songs into the cache
+                // so the first track change after launch doesn't stall.
+                if (song.localUri == null) prefetchAhead()
             }
         }
     }

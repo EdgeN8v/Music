@@ -7,13 +7,17 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
+
+private const val MAX_SEARCH_HISTORY = 10
 
 data class ServerConfig(
     val url: String = "",
@@ -53,6 +57,7 @@ class SettingsRepository(private val context: Context) {
         val PLAYBACK_STATE = stringPreferencesKey("playback_state")
         val FAVORITES_FIRST = booleanPreferencesKey("favorites_first")
         val PLAY_MODE = stringPreferencesKey("play_mode")
+        val SEARCH_HISTORY = stringPreferencesKey("search_history")
     }
 
     val config: Flow<ServerConfig> = context.dataStore.data.map { prefs ->
@@ -108,6 +113,47 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun savePlayModeName(name: String) {
         context.dataStore.edit { prefs -> prefs[Keys.PLAY_MODE] = name }
+    }
+
+    /** Recent search queries, newest first, capped at [MAX_SEARCH_HISTORY] — shown in the search overlay while the box is still empty. */
+    val searchHistory: Flow<List<String>> = context.dataStore.data.map { prefs ->
+        prefs[Keys.SEARCH_HISTORY]?.let { raw ->
+            try {
+                val arr = JSONArray(raw)
+                (0 until arr.length()).map { arr.getString(it) }
+            } catch (e: Exception) {
+                emptyList()
+            }
+        } ?: emptyList()
+    }
+
+    /**
+     * NonCancellable: this is called right as the search overlay closes
+     * (picking a result dismisses it), which disposes the composable scope
+     * the call was launched from — same cancel-mid-write trap as
+     * SongRepository.setMoodLabel.
+     */
+    suspend fun addSearchHistory(query: String) {
+        val q = query.trim()
+        if (q.isEmpty()) return
+        withContext(NonCancellable) {
+            context.dataStore.edit { prefs ->
+                val current = prefs[Keys.SEARCH_HISTORY]?.let { raw ->
+                    try {
+                        val arr = JSONArray(raw)
+                        (0 until arr.length()).map { arr.getString(it) }
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                } ?: emptyList()
+                val updated = (listOf(q) + current.filterNot { it.equals(q, ignoreCase = true) }).take(MAX_SEARCH_HISTORY)
+                prefs[Keys.SEARCH_HISTORY] = JSONArray(updated).toString()
+            }
+        }
+    }
+
+    suspend fun clearSearchHistory() {
+        context.dataStore.edit { prefs -> prefs.remove(Keys.SEARCH_HISTORY) }
     }
 
     /**

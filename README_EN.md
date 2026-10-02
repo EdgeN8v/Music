@@ -1,4 +1,4 @@
-# Music
+﻿# Music
 
 <p align="center">
   <a href="README.md">简体中文</a> | <b>English</b>
@@ -44,7 +44,7 @@ This project was written end to end pair-programming with [Claude Code](https://
   - When playing Energetic/Calm, favorited songs are prioritized first.
 - **Play queue**: one button in Home/Library's top bar opens it — a deliberately minimal list: title + favorite heart + remove + drag to reorder per row, "now playing" pinned at top. Manually queued "play next" songs stack in the order you tapped them (not last-tapped-plays-first).
 - **Sequential/repeat-one/shuffle**: the cycle button on the mini player switches between the three; switching takes effect immediately on whatever's left in the current queue, instead of waiting for the queue to loop back around.
-- **Resume playback**: reopening the app picks back up from wherever you paused, instead of starting over from zero.
+- **Resume playback**: reopening the app automatically resumes playing from where you left off — no extra tap on play, and no starting over from zero.
 - **Offline cache**: streamed audio goes through a size-capped local LRU cache — a song you've already played doesn't need the network again, and the next couple of songs get quietly prefetched in the background.
 - **Headset/Bluetooth/lock-screen** media-key integration (previous/play-pause/next) via a standard MediaSession.
 - **Pinyin sort + an A–Z index strip** — Library groups by the first pinyin letter of the title, with a side strip to jump straight to a letter.

@@ -11,6 +11,29 @@ data class ChangelogEntry(val version: String, val notes: List<String>)
 object Changelog {
     val entries = listOf(
         ChangelogEntry(
+            version = "0.19",
+            notes = listOf(
+                "修复：Home 顶部的\"收藏优先\"爱心开关，点击后现在会立刻重排当前播放队列，不用等下次重新点激情/平静才生效",
+                "新增：搜索页打开时不再是一片空白——显示最近搜索（点一下直接搜，可清空）和\"试试搜这些歌手\"推荐（从整个库的所有歌手里随机挑 12 个，不满意点\"换一批\"重抽）",
+                "整理了 Settings 页面：按 外观 / 音乐来源 / 缓存 / 激情平静标记 分成四组，标题统一成中文；U 盘授权按钮只在检测到 U 盘时才出现；清理缓存、导出/导入改成低调的文字按钮",
+                "启动提速：打开 App 后加载上次歌曲/歌库的时间从约 1.9 秒降到 0.2 秒左右（拼音排序挪出主线程，并把排序结果缓存到本地；升级后第一次启动会预热一次，稍慢）",
+                "打开 App 后自动从上次的位置接着播放，不再停在暂停状态等你点播放"
+            )
+        ),
+        ChangelogEntry(
+            version = "0.18",
+            notes = listOf(
+                "新增：收藏/取消收藏失败时（比如网络问题）会弹提示条告诉你失败了，不再是图标默默跳回原样"
+            )
+        ),
+        ChangelogEntry(
+            version = "0.17",
+            notes = listOf(
+                "新增：搜索结果里每首歌后面也加了收藏和播放下一首按钮，不用先跳转过去再操作",
+                "新增：MiniPlayer 最右边加了收藏/取消收藏按钮，Home 页面也能直接操作正在播放的歌"
+            )
+        ),
+        ChangelogEntry(
             version = "0.16",
             notes = listOf(
                 "修复：重新打开 App 播放模式总是重置成顺序播放——现在会记住你上次的顺序/单曲循环/随机",

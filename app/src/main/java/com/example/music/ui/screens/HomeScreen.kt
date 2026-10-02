@@ -153,7 +153,7 @@ fun HomeScreen() {
             TopAppBar(
                 title = { Text(text = "Music", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { scope.launch { settingsRepository.setFavoritesFirst(!favoritesFirst) } }) {
+                    IconButton(onClick = { PlayerController.setFavoritesFirst(!favoritesFirst) }) {
                         Icon(
                             if (favoritesFirst) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                             contentDescription = if (favoritesFirst) "激情/平静优先播放收藏（点击关闭）" else "激情/平静优先播放收藏（已关闭，点击开启）",
@@ -235,6 +235,15 @@ fun HomeScreen() {
                     }
                 }
                 showSearch = false
+            },
+            onFavoriteToggle = { song ->
+                scope.launch {
+                    SongRepository.toggleFavorite(context, config, song)?.let { snackbarHostState.showSnackbar("收藏失败：$it") }
+                }
+            },
+            onPlayNext = { song ->
+                PlayerController.playNext(config, song)
+                scope.launch { snackbarHostState.showSnackbar("已加入下一首播放：${song.title}") }
             }
         )
     }

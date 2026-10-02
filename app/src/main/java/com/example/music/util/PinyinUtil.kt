@@ -61,11 +61,50 @@ object PinyinUtil {
         // Strip combining diacritical marks (tone marks) left over from Han-Latin,
         // e.g. "tǔ" -> "tu".
         return Normalizer.normalize(converted, Normalizer.Form.NFD)
-            .replace(Regex("\\p{Mn}+"), "")
+            .replace(DIACRITICS, "")
+    }
+
+    // Was constructed inline on every call — once per song, ~1200 times per sort.
+    private val DIACRITICS = Regex("\\p{Mn}+")
+
+    /**
+     * Title -> sort key memo. Transliterating the whole library took ~1.5s
+     * on a cold start (ICU init + one Han-Latin pass per song), all of it
+     * blocking app startup — and the keys for a given title never change,
+     * so they're remembered here and persisted by [saveKeyCache] /
+     * restored by [loadKeyCache]. After the first run, a cold start only
+     * transliterates songs that are actually new. Bump [KEY_CACHE_VERSION]
+     * whenever [polyphoneOverrides] or the transliteration logic changes.
+     */
+    private val keyCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private var keyCacheLoaded = false
+    const val KEY_CACHE_VERSION = 1
+
+    @Synchronized
+    fun loadKeyCache(file: java.io.File) {
+        if (keyCacheLoaded) return
+        keyCacheLoaded = true
+        try {
+            if (!file.exists()) return
+            val obj = org.json.JSONObject(file.readText())
+            obj.keys().forEach { keyCache[it] = obj.getString(it) }
+        } catch (e: Exception) {
+            keyCache.clear() // a corrupt cache just means recomputing; never fatal
+        }
+    }
+
+    fun keyCacheSize(): Int = keyCache.size
+
+    fun saveKeyCache(file: java.io.File) {
+        try {
+            file.writeText(org.json.JSONObject(keyCache as Map<*, *>).toString())
+        } catch (e: Exception) {
+            // best-effort only
+        }
     }
 
     /** Sort key used to order songs within the same letter bucket. */
-    fun sortKey(title: String): String = toLatin(title).uppercase(Locale.ROOT)
+    fun sortKey(title: String): String = keyCache.getOrPut(title) { toLatin(title).uppercase(Locale.ROOT) }
 
     /** The single A–Z bucket letter this title belongs under, "#" if none applies. */
     fun indexLetter(title: String): String {

@@ -338,7 +338,9 @@ fun LibraryScreen() {
                                             scope.launch { snackbarHostState.showSnackbar("已加入下一首播放：${song.title}") }
                                         },
                                         onFavoriteToggle = {
-                                            scope.launch { SongRepository.toggleFavorite(context, config, song) }
+                                            scope.launch {
+                                                SongRepository.toggleFavorite(context, config, song)?.let { snackbarHostState.showSnackbar("收藏失败：$it") }
+                                            }
                                         },
                                         onMoodPick = { mood ->
                                             scope.launch { SongRepository.setMoodLabel(context, song, mood) }
@@ -376,6 +378,15 @@ fun LibraryScreen() {
                 // want "play next" instead, which needs the row's own button anyway.
                 showSearch = false
                 scrollToSong(song)
+            },
+            onFavoriteToggle = { song ->
+                scope.launch {
+                    SongRepository.toggleFavorite(context, config, song)?.let { snackbarHostState.showSnackbar("收藏失败：$it") }
+                }
+            },
+            onPlayNext = { song ->
+                PlayerController.playNext(config, song)
+                scope.launch { snackbarHostState.showSnackbar("已加入下一首播放：${song.title}") }
             }
         )
     }
