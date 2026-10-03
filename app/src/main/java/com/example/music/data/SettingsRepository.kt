@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -58,15 +59,24 @@ class SettingsRepository(private val context: Context) {
         val FAVORITES_FIRST = booleanPreferencesKey("favorites_first")
         val PLAY_MODE = stringPreferencesKey("play_mode")
         val SEARCH_HISTORY = stringPreferencesKey("search_history")
+        val FAVORITE_KEYS = stringPreferencesKey("favorite_keys")
+        val FAVORITES_SEEDED = booleanPreferencesKey("favorites_seeded")
     }
 
+    // distinctUntilChanged: DataStore emits its whole snapshot whenever *any*
+    // preference changes (e.g. the playback position that's saved every ~10s
+    // while a song plays), and a plain .map re-emits an identical ServerConfig
+    // each time. Settings collects this to fill its text fields, so every one
+    // of those unrelated writes stomped whatever you were in the middle of
+    // typing back to the saved value — "I delete the username and it types
+    // itself back in".
     val config: Flow<ServerConfig> = context.dataStore.data.map { prefs ->
         ServerConfig(
             url = prefs[Keys.URL] ?: "",
             username = prefs[Keys.USERNAME] ?: "",
             password = prefs[Keys.PASSWORD] ?: ""
         )
-    }
+    }.distinctUntilChanged()
 
     suspend fun save(config: ServerConfig) {
         context.dataStore.edit { prefs ->
@@ -177,16 +187,9 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    /** Favorite song ids for USB-sourced songs — there's no server to star them on, so we track it ourselves. */
+    /** Legacy: USB favorites used to be tracked by song id. Only read now to migrate them into [favoriteKeys] — see [migrateLocalFavoriteIds]. */
     val localFavoriteIds: Flow<Set<String>> = context.dataStore.data.map { prefs ->
         prefs[Keys.LOCAL_FAVORITE_IDS] ?: emptySet()
-    }
-
-    suspend fun toggleLocalFavorite(songId: String) {
-        context.dataStore.edit { prefs ->
-            val current = prefs[Keys.LOCAL_FAVORITE_IDS] ?: emptySet()
-            prefs[Keys.LOCAL_FAVORITE_IDS] = if (songId in current) current - songId else current + songId
-        }
     }
 
     /**
@@ -249,16 +252,85 @@ class SettingsRepository(private val context: Context) {
      * also what tools/export_mood_labels.py produces for the initial bulk
      * import.
      */
+    /**
+     * Favorites live in the same file as the mood labels, as
+     * `{"version":2,"moods":{key:mood,…},"favorites":[key,…]}`. [importMoodLabelsJson]
+     * still accepts the older flat `{key:mood}` shape (that's also what
+     * tools/export_mood_labels.py writes) — it just leaves favorites alone.
+     */
     suspend fun exportMoodLabelsJson(): String {
-        val obj = JSONObject()
-        moodLabels.first().forEach { (key, mood) -> obj.put(key, mood) }
-        return obj.toString()
+        val moods = JSONObject()
+        moodLabels.first().forEach { (key, mood) -> moods.put(key, mood) }
+        return JSONObject()
+            .put("version", 2)
+            .put("moods", moods)
+            .put("favorites", JSONArray(favoriteKeys.first().toList()))
+            .toString()
     }
 
     /** Throws if [json] isn't valid JSON — let the caller show that as an import error instead of silently wiping existing labels. */
     suspend fun importMoodLabelsJson(json: String) {
-        JSONObject(json) // validate before touching anything persisted
-        context.dataStore.edit { prefs -> prefs[Keys.MOOD_LABELS] = json }
+        val root = JSONObject(json) // validate before touching anything persisted
+        val moods = root.optJSONObject("moods")
+        context.dataStore.edit { prefs ->
+            if (moods != null) {
+                prefs[Keys.MOOD_LABELS] = moods.toString()
+                root.optJSONArray("favorites")?.let {
+                    prefs[Keys.FAVORITE_KEYS] = it.toString()
+                    prefs[Keys.FAVORITES_SEEDED] = true
+                }
+            } else {
+                prefs[Keys.MOOD_LABELS] = json
+            }
+        }
+    }
+
+    /**
+     * Which songs are favorited, keyed by "title+artist" — the same key the
+     * mood labels use, and for the same reason: it doesn't depend on a
+     * Navidrome account, song id or file path. Favorites used to be Navidrome
+     * "stars", which belong to a server *account* — switch username/URL, or
+     * have the library rescanned under new ids after re-tagging, and every
+     * favorite silently vanished. Now it's a local file you can export with
+     * the mood labels, and the server isn't involved at all.
+     */
+    val favoriteKeys: Flow<Set<String>> = context.dataStore.data.map { prefs -> parseKeySet(prefs[Keys.FAVORITE_KEYS]) }
+
+    val favoritesSeeded: Flow<Boolean> = context.dataStore.data.map { prefs -> prefs[Keys.FAVORITES_SEEDED] ?: false }
+
+    private fun parseKeySet(raw: String?): Set<String> =
+        raw?.let {
+            try {
+                val arr = JSONArray(it)
+                (0 until arr.length()).mapTo(LinkedHashSet()) { i -> arr.getString(i) }
+            } catch (e: Exception) {
+                emptySet()
+            }
+        } ?: emptySet()
+
+    suspend fun setFavorite(key: String, favorite: Boolean) {
+        context.dataStore.edit { prefs ->
+            val current = parseKeySet(prefs[Keys.FAVORITE_KEYS])
+            prefs[Keys.FAVORITE_KEYS] = JSONArray((if (favorite) current + key else current - key).toList()).toString()
+        }
+    }
+
+    /** Merges [keys] into the favorites (never removes any) and marks the one-time migration from server stars as done. */
+    suspend fun seedFavorites(keys: Set<String>) {
+        context.dataStore.edit { prefs ->
+            val merged = parseKeySet(prefs[Keys.FAVORITE_KEYS]) + keys
+            prefs[Keys.FAVORITE_KEYS] = JSONArray(merged.toList()).toString()
+            prefs[Keys.FAVORITES_SEEDED] = true
+        }
+    }
+
+    /** USB songs used to be favorited by id; folds those into the key-based set and drops the old id set. */
+    suspend fun migrateLocalFavoriteIds(keysForIds: Set<String>) {
+        context.dataStore.edit { prefs ->
+            val merged = parseKeySet(prefs[Keys.FAVORITE_KEYS]) + keysForIds
+            prefs[Keys.FAVORITE_KEYS] = JSONArray(merged.toList()).toString()
+            prefs.remove(Keys.LOCAL_FAVORITE_IDS)
+        }
     }
 
     /**

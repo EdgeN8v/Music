@@ -132,11 +132,19 @@ fun HomeScreen() {
                 // actually surfaces it sooner instead of landing anywhere by
                 // chance — unless favoritesFirst is off (top-bar toggle), for
                 // when you'd rather get a fresh mix than the same favorited
-                // handful every time. 收藏/随机 don't need this split — one's
-                // already all-favorites, the other's meant to be a flat shuffle.
+                // handful every time. 随机 is meant to be a flat shuffle.
+                //
+                // 收藏 is the mirror image: favorited songs that already carry an
+                // 激情/平静 label get played first by those two tiles, so here the
+                // *unlabeled* favorites go first — otherwise the 收藏 tile would
+                // keep replaying the exact same songs the other tiles already
+                // front-load.
                 val ordered = if ((mood == "Energetic" || mood == "Calm") && favoritesFirst) {
                     val (favorites, rest) = filtered.partition { it.isFavorite }
                     if (shuffleActive) favorites.shuffled() + rest.shuffled() else favorites + rest
+                } else if (mood == "Favorites") {
+                    val (unlabeled, labeled) = filtered.partition { it.genre.isNullOrBlank() }
+                    if (shuffleActive) unlabeled.shuffled() + labeled.shuffled() else unlabeled + labeled
                 } else if (shuffleActive) {
                     filtered.shuffled()
                 } else {
@@ -236,11 +244,7 @@ fun HomeScreen() {
                 }
                 showSearch = false
             },
-            onFavoriteToggle = { song ->
-                scope.launch {
-                    SongRepository.toggleFavorite(context, config, song)?.let { snackbarHostState.showSnackbar("收藏失败：$it") }
-                }
-            },
+            onFavoriteToggle = { song -> scope.launch { SongRepository.toggleFavorite(context, song) } },
             onPlayNext = { song ->
                 PlayerController.playNext(config, song)
                 scope.launch { snackbarHostState.showSnackbar("已加入下一首播放：${song.title}") }

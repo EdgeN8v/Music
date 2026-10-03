@@ -205,11 +205,24 @@ object PlayerController {
         val naturalIndex = SongRepository.library.value.withIndex().associate { (i, s) -> s.id to i }
         fun sequential(songs: List<Song>) = songs.sortedBy { naturalIndex[it.id] ?: Int.MAX_VALUE }
 
-        val applyFavoritesFirst = (_activeMood.value == "Energetic" || _activeMood.value == "Calm") && _favoritesFirstPref.value
-        val newAmbient = if (applyFavoritesFirst) {
-            val liveFavoriteIds = SongRepository.library.value.filter { it.isFavorite }.mapTo(HashSet()) { it.id }
-            val (favorites, rest) = ambientRest.partition { it.id in liveFavoriteIds }
-            if (shuffle) favorites.shuffled() + rest.shuffled() else sequential(favorites) + sequential(rest)
+        // Which songs, if any, get grouped ahead of the rest — mirrors how
+        // HomeScreen.playMood builds a fresh queue for each tile, so a mode
+        // switch doesn't quietly undo it:
+        //  - 激情/平静 (with the favorites-first setting on): favorited songs first
+        //  - 收藏: songs with NO 激情/平静 label first, since the labeled ones
+        //    are already front-loaded by those two tiles
+        val live = SongRepository.library.value.associateBy { it.id }
+        val mood = _activeMood.value
+        val goesFirst: ((Song) -> Boolean)? = when {
+            (mood == "Energetic" || mood == "Calm") && _favoritesFirstPref.value ->
+                { s -> live[s.id]?.isFavorite ?: s.isFavorite }
+            mood == "Favorites" ->
+                { s -> (live[s.id]?.genre ?: s.genre).isNullOrBlank() }
+            else -> null
+        }
+        val newAmbient = if (goesFirst != null) {
+            val (first, rest) = ambientRest.partition(goesFirst)
+            if (shuffle) first.shuffled() + rest.shuffled() else sequential(first) + sequential(rest)
         } else if (shuffle) {
             ambientRest.shuffled()
         } else {

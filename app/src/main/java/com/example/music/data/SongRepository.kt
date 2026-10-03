@@ -69,8 +69,33 @@ object SongRepository {
      * gradient) just reads [Song.genre] as normal and gets the labeled value
      * for free.
      */
-    private fun applyMoodLabels(songs: List<Song>, labels: Map<String, String>): List<Song> =
-        songs.map { song -> song.copy(genre = labels[moodKey(song)]) }
+    private fun applyUserMarks(songs: List<Song>, labels: Map<String, String>, favorites: Set<String>): List<Song> =
+        songs.map { song ->
+            val key = moodKey(song)
+            song.copy(genre = labels[key], isFavorite = key in favorites)
+        }
+
+    /**
+     * The local favorites set to apply (see [SettingsRepository.favoriteKeys]),
+     * after the one-time migration from the old server-side stars: until the
+     * file has been seeded, fold in every favorite found in any cached library
+     * (every account/URL ever used — that's what recovers favorites after a
+     * username change) plus, when a fresh network result is at hand, its
+     * starred songs. If there's neither a cache nor a network result yet we
+     * leave it unseeded so the first real load can still do it. After that the
+     * server's stars are ignored entirely.
+     */
+    private suspend fun favoriteKeysFor(context: Context, networkSongs: List<Song>?): Set<String> {
+        val settings = SettingsRepository(context)
+        if (!settings.favoritesSeeded.first()) {
+            val fromCaches = LibraryCache.readAllFavoriteKeys(context)
+            val fromNetwork = networkSongs?.filter { it.isFavorite }?.mapTo(HashSet()) { moodKey(it) }
+            if (fromCaches != null || fromNetwork != null) {
+                settings.seedFavorites((fromCaches ?: emptySet()) + (fromNetwork ?: emptySet()))
+            }
+        }
+        return settings.favoriteKeys.first()
+    }
 
     /**
      * Reads [LibraryCache] (near-instant, on-disk) and shows it immediately
@@ -94,7 +119,10 @@ object SongRepository {
             if (_library.value.isNotEmpty()) return
             val labels = SettingsRepository(context).moodLabels.first()
             LibraryCache.read(context, config)?.let { cached ->
-                if (cached.isNotEmpty()) setIndexed(sortOffMain(context, applyMoodLabels(cached, labels)))
+                if (cached.isNotEmpty()) {
+                    val favorites = favoriteKeysFor(context, null)
+                    setIndexed(sortOffMain(context, applyUserMarks(cached, labels, favorites)))
+                }
             }
         }
     }
@@ -132,7 +160,8 @@ object SongRepository {
         try {
             when (val result = SubsonicClient.getAllSongs(config)) {
                 is SubsonicClient.ApiResult.Success -> {
-                    setIndexed(sortOffMain(context, applyMoodLabels(result.data, labels)))
+                    val favorites = favoriteKeysFor(context, result.data)
+                    setIndexed(sortOffMain(context, applyUserMarks(result.data, labels, favorites)))
                     LibraryCache.write(context, config, result.data)
                 }
                 is SubsonicClient.ApiResult.Failure -> {
@@ -172,9 +201,14 @@ object SongRepository {
                 scanned = UsbLibrarySource.scanLibrary(context, treeUri)
                 attempt++
             }
-            val labels = SettingsRepository(context).moodLabels.first()
-            val songs = applyMoodLabels(scanned.map { it.copy(isFavorite = it.id in favoriteIds) }, labels)
-            setIndexed(sortOffMain(context, songs))
+            val settings = SettingsRepository(context)
+            val labels = settings.moodLabels.first()
+            // USB favorites used to be kept by song id; fold any into the
+            // key-based favorites once, then they're gone for good.
+            val legacyKeys = scanned.filter { it.id in favoriteIds }.mapTo(HashSet()) { moodKey(it) }
+            if (legacyKeys.isNotEmpty()) settings.migrateLocalFavoriteIds(legacyKeys)
+            val favorites = favoriteKeysFor(context, null)
+            setIndexed(sortOffMain(context, applyUserMarks(scanned, labels, favorites)))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -192,51 +226,25 @@ object SongRepository {
     }
 
     /**
-     * NonCancellable for the same reason as setMoodLabel below: this is
-     * launched from a screen-scoped coroutine scope (the heart icon in
-     * Library/search), and navigating away right after tapping it must not
-     * abort the write/star call mid-flight.
+     * Favorites are a local file (see [SettingsRepository.favoriteKeys]), so
+     * a toggle can't fail on the network any more — the heart flips, the file
+     * is updated, done. Used to star/unstar on the Navidrome server instead,
+     * which tied every favorite to one server account: change the username
+     * or URL, or have the library rescanned under new ids, and they all
+     * vanished; an unreachable server also made hearts silently bounce back.
      *
-     * Returns the failure message, or null on success — a star/unstar call
-     * to the server can fail (network down, DNS hiccup, …) just like any
-     * other request, and before this it failed completely silently: the
-     * heart icon would flip on tap and immediately flip back with no
-     * explanation, which looked exactly like "the button doesn't work"
-     * rather than "that one request failed". Callers with a SnackbarHost
-     * can surface this; ones that don't (MiniPlayerBar, the queue sheet)
-     * just ignore the return value, same silent-revert behavior as before.
+     * Applies by title+artist key, so duplicate entries of the same song flip
+     * together. NonCancellable because this is launched from a screen-scoped
+     * scope and navigating away right after tapping must not abort the write.
      */
-    suspend fun toggleFavorite(context: Context, config: ServerConfig, song: Song): String? = withContext(NonCancellable) {
-        val wasFavorite = song.isFavorite
-
-        if (song.localUri != null) {
-            // No server to star it on — track it ourselves.
-            SettingsRepository(context).toggleLocalFavorite(song.id)
-            setIndexed(_indexedLibrary.value.map {
-                if (it.song.id == song.id) it.copy(song = it.song.copy(isFavorite = !wasFavorite)) else it
-            })
-            return@withContext null
-        }
-
-        // optimistic update so the heart responds instantly — order/letters are
-        // unaffected by a favorite toggle, so this just patches the song in place
+    suspend fun toggleFavorite(context: Context, song: Song) = withContext(NonCancellable) {
+        val live = _indexedLibrary.value.firstOrNull { it.song.id == song.id }?.song ?: song
+        val key = moodKey(song)
+        val nowFavorite = !live.isFavorite
+        SettingsRepository(context).setFavorite(key, nowFavorite)
         setIndexed(_indexedLibrary.value.map {
-            if (it.song.id == song.id) it.copy(song = it.song.copy(isFavorite = !wasFavorite)) else it
+            if (moodKey(it.song) == key) it.copy(song = it.song.copy(isFavorite = nowFavorite)) else it
         })
-        val result = if (wasFavorite) {
-            SubsonicClient.unstar(config, song.id)
-        } else {
-            SubsonicClient.star(config, song.id)
-        }
-        if (result is SubsonicClient.ApiResult.Failure) {
-            // roll back on failure
-            setIndexed(_indexedLibrary.value.map {
-                if (it.song.id == song.id) it.copy(song = it.song.copy(isFavorite = wasFavorite)) else it
-            })
-            _error.value = result.message
-            return@withContext result.message
-        }
-        null
     }
 
     /**
@@ -273,9 +281,12 @@ object SongRepository {
      */
     suspend fun reapplyMoodLabels(context: Context) {
         if (_indexedLibrary.value.isEmpty()) return
-        val labels = SettingsRepository(context).moodLabels.first()
+        val settings = SettingsRepository(context)
+        val labels = settings.moodLabels.first()
+        val favorites = settings.favoriteKeys.first()
         setIndexed(_indexedLibrary.value.map { indexed ->
-            indexed.copy(song = indexed.song.copy(genre = labels[moodKey(indexed.song)]))
+            val key = moodKey(indexed.song)
+            indexed.copy(song = indexed.song.copy(genre = labels[key], isFavorite = key in favorites))
         })
     }
 }

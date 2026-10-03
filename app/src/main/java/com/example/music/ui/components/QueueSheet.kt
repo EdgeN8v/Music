@@ -47,8 +47,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.music.data.ServerConfig
-import com.example.music.data.SettingsRepository
 import com.example.music.data.Song
 import com.example.music.data.SongRepository
 import com.example.music.playback.PlayerController
@@ -78,8 +76,6 @@ private val ROW_HEIGHT = 64.dp
 @Composable
 private fun QueueContent() {
     val context = LocalContext.current
-    val settingsRepository = remember { SettingsRepository(context) }
-    val config by settingsRepository.config.collectAsState(initial = ServerConfig())
     val scope = rememberCoroutineScope()
 
     val queue by PlayerController.queue.collectAsState()
@@ -111,7 +107,7 @@ private fun QueueContent() {
                     modifier = Modifier.size(18.dp)
                 )
                 SongTexts(currentSong, modifier = Modifier.weight(1f).padding(start = 10.dp), emphasized = true)
-                IconButton(onClick = { scope.launch { SongRepository.toggleFavorite(context, config, currentSong) } }) {
+                IconButton(onClick = { scope.launch { SongRepository.toggleFavorite(context, currentSong) } }) {
                     FavoriteIcon(currentSong.isFavorite)
                 }
             }
@@ -137,7 +133,7 @@ private fun QueueContent() {
                         onClick = { PlayerController.jumpToQueueIndex(index) },
                         onPinToTop = { PlayerController.moveQueueItem(index, currentIndex + 1) },
                         onRemove = { PlayerController.removeFromQueue(index) },
-                        onFavoriteToggle = { scope.launch { SongRepository.toggleFavorite(context, config, liveSong) } },
+                        onFavoriteToggle = { scope.launch { SongRepository.toggleFavorite(context, liveSong) } },
                         onDragStart = {
                             draggingIndex = index
                             dragOffsetPx = 0f

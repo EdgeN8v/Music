@@ -47,6 +47,33 @@ object LibraryCache {
         }
     }
 
+    /**
+     * Favorite "title+artist" keys (same key as the mood labels) across
+     * *every* cached library, not just the current account's. Used once, to
+     * seed the local favorites file from whatever the server had starred —
+     * including accounts/URLs you're no longer pointed at. Returns null if
+     * there's no cache file at all (nothing to seed from yet).
+     */
+    suspend fun readAllFavoriteKeys(context: Context): Set<String>? = withContext(Dispatchers.IO) {
+        val files = context.filesDir.listFiles { f -> f.name.startsWith("library_cache_") && f.name.endsWith(".json") }
+        if (files.isNullOrEmpty()) return@withContext null
+        val keys = LinkedHashSet<String>()
+        for (file in files) {
+            try {
+                val arr = JSONArray(file.readText())
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    if (obj.optBoolean("isFavorite", false)) {
+                        keys.add("${obj.getString("title")}${obj.getString("artist")}")
+                    }
+                }
+            } catch (e: Exception) {
+                // an unreadable cache just contributes nothing
+            }
+        }
+        keys
+    }
+
     suspend fun write(context: Context, config: ServerConfig, songs: List<Song>) = withContext(Dispatchers.IO) {
         try {
             val arr = JSONArray()

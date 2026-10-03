@@ -458,11 +458,12 @@ fun SettingsScreen(
             }
 
             SettingsSection(
-                title = "激情/平静标记",
-                info = "每首歌的「激情/平静」现在只认这一份标记文件，不再看歌曲文件本身的 genre 标签——" +
-                    "在 Library 长按一首歌改的，都是改这份文件。它只存在这台手机上，不会同步到别的设备，" +
+                title = "激情/平静标记与收藏",
+                info = "每首歌的「激情/平静」和「收藏」都只记在这一份文件里，不再看歌曲文件本身的 genre 标签，" +
+                    "也不再依赖 Navidrome 账号（换用户名/地址、重新扫描曲库都不会丢收藏）。" +
+                    "在 Library 长按一首歌改的分类、点心形收藏的歌，都是改这份文件。它只存在这台手机上，不会同步到别的设备，" +
                     "导出一份存到网盘/NAS/邮箱等地方，换手机后再导入就不用重新标一遍；" +
-                    "首次用 tools/export_mood_labels.py 批量分类出来的结果，也是从这里导入进来。"
+                    "首次用 tools/export_mood_labels.py 批量分类出来的结果，也是从这里导入进来（只包含分类，不会动你的收藏）。"
             ) {
                 Row {
                     TextButton(onClick = { moodExportLauncher.launch("mood_labels.json") }) {

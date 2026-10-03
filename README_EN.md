@@ -38,7 +38,7 @@ This project was written end to end pair-programming with [Claude Code](https://
 ## What the app does
 
 - **Dual source**: network mode talks to a Navidrome/Subsonic server; with no network or no server configured, it automatically falls back to a USB drive (grant access once via Storage Access Framework).
-- **Mood-based playback**: four tiles on Home — Energetic / Calm / Favorites / Random. Energetic/Calm **don't** read the song file's own genre tag — they're driven by an independent local "label file" on the phone (keyed by title+artist). You can populate it two ways:
+- **Mood-based playback**: four tiles on Home — Energetic / Calm / Favorites / Random. Energetic/Calm **don't** read the song file's own genre tag — they're driven by an independent local "label file" on the phone (keyed by title+artist; **favorites are kept in that same file**, independent of any Navidrome account). You can populate it two ways:
   - Batch-run an audio-feature analysis on your PC (`tools/`) and import the result once;
   - Or long-press a song in Library to set/clear its mood by hand, which takes effect immediately and also rolls into the next export/backup.
   - When playing Energetic/Calm, favorited songs are prioritized first.

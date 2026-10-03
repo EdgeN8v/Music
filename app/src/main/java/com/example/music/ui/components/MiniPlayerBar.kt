@@ -37,8 +37,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.music.data.ServerConfig
-import com.example.music.data.SettingsRepository
 import com.example.music.data.SongRepository
 import com.example.music.playback.PlayMode
 import com.example.music.playback.PlayerController
@@ -59,8 +57,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun MiniPlayerBar() {
     val context = LocalContext.current
-    val settingsRepository = remember { SettingsRepository(context) }
-    val config by settingsRepository.config.collectAsState(initial = ServerConfig())
     val scope = rememberCoroutineScope()
 
     val currentSong by PlayerController.currentSong.collectAsState()
@@ -147,7 +143,7 @@ fun MiniPlayerBar() {
             IconButton(onClick = { PlayerController.skipToNext() }) {
                 Icon(Icons.Filled.SkipNext, contentDescription = "下一首")
             }
-            IconButton(onClick = { scope.launch { SongRepository.toggleFavorite(context, config, song) } }) {
+            IconButton(onClick = { scope.launch { SongRepository.toggleFavorite(context, song) } }) {
                 Icon(
                     imageVector = if (song.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     contentDescription = "收藏",
